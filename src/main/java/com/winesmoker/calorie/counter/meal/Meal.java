@@ -41,7 +41,7 @@ public class Meal {
 
     private Double alcohol;
 
-    private Double calories;
+    private Long calories;
 
     @NotNull
     @Column(name = "user_id")

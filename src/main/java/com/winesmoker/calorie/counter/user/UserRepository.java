@@ -14,5 +14,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByTgId(Long tgId);
 
-    Optional<Long> findIdByTgId(Long tgId);
+    Optional<User> findByTgId(Long tgId);
+
+    @Override
+    Optional<User> findById(Long aLong);
 }

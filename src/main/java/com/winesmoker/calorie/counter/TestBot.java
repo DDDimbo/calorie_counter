@@ -2,8 +2,9 @@ package com.winesmoker.calorie.counter;
 
 import com.winesmoker.calorie.counter.complaint.service.ComplaintService;
 import com.winesmoker.calorie.counter.enums.MealIntake;
+import com.winesmoker.calorie.counter.enums.Request;
 import com.winesmoker.calorie.counter.meal.service.MealService;
-import com.winesmoker.calorie.counter.service.MealModeService;
+import com.winesmoker.calorie.counter.mode.ModeService;
 import com.winesmoker.calorie.counter.user.service.UserService;
 import com.winesmoker.calorie.counter.utility.Prints;
 import lombok.SneakyThrows;
@@ -36,7 +37,9 @@ public class TestBot extends TelegramLongPollingBot {
     private final ComplaintService complaintService;
     private final MealService mealService;
 
-    private final MealModeService mealModeService = MealModeService.getInstance();
+    private String commandFlag;
+
+    private final ModeService mealModeService = ModeService.getInstance();
 
 
     @Autowired
@@ -94,28 +97,57 @@ public class TestBot extends TelegramLongPollingBot {
         Message message = callbackQuery.getMessage();
         String[] param = callbackQuery.getData().split(":");
         String action = param[0];
-        MealIntake newMeal = MealIntake.valueOf(param[1]);
 
         switch (action) {
             case "MEAL":
+                MealIntake newMeal = MealIntake.valueOf(param[1]);
                 mealModeService.setTargetMeal(message.getChatId(), newMeal);
+                List<InlineKeyboardButton> mealButtons = new ArrayList<>();
+                MealIntake targetMeal = mealModeService.getTargetMeal(message.getChatId());
+                for (MealIntake meal : MealIntake.values()) {
+                    mealButtons.add(
+                            InlineKeyboardButton.builder()
+                                    .text(getCurrencyButton(targetMeal, meal))
+                                    .callbackData("MEAL:" + meal.name())
+                                    .build()
+                    );
+                }
+                execute(EditMessageReplyMarkup.builder()
+                        .chatId(message.getChatId().toString())
+                        .messageId(message.getMessageId())
+                        .replyMarkup(InlineKeyboardMarkup.builder().keyboard(Collections.singleton(mealButtons)).build())
+                        .build());
+                break;
+            case "REQUEST":
+                Request newRequest = Request.valueOf(param[1]);
+                mealModeService.setTargetRequest(message.getChatId(), newRequest);
+                List<InlineKeyboardButton> requestButtons = new ArrayList<>();
+                Request targetRequest = mealModeService.getTargetRequest(message.getChatId());
+                requestButtons.add(InlineKeyboardButton.builder()
+                        .text(getCurrencyButton(targetRequest, Request.YES))
+                        .callbackData("REQUEST:" + Request.YES)
+                        .build());
+                requestButtons.add(InlineKeyboardButton.builder()
+                        .text(getCurrencyButton(targetRequest, Request.NO))
+                        .callbackData("REQUEST:" + Request.NO)
+                        .build());
+                execute(EditMessageReplyMarkup.builder()
+                        .chatId(message.getChatId().toString())
+                        .messageId(message.getMessageId())
+                        .replyMarkup(InlineKeyboardMarkup.builder().keyboard(Collections.singleton(requestButtons)).build())
+                        .build());
 
+                if (mealModeService.getTargetRequest(message.getChatId()).equals(Request.YES))
+                    clearInfo(message);
+                else {
+                    execute(SendMessage.builder()
+                            .text("Удаление отменено")
+                            .chatId(message.getChatId().toString())
+                            .build());
+                }
+                break;
         }
-        List<InlineKeyboardButton> mealButtons = new ArrayList<>();
-        MealIntake targetMeal = mealModeService.getTargetMeal(message.getChatId());
-        for (MealIntake meal : MealIntake.values()) {
-            mealButtons.add(
-                    InlineKeyboardButton.builder()
-                            .text(getCurrencyButton(targetMeal, meal))
-                            .callbackData("MEAL:" + meal.name())
-                            .build()
-            );
-        }
-        execute(EditMessageReplyMarkup.builder()
-                .chatId(message.getChatId().toString())
-                .messageId(message.getMessageId())
-                .replyMarkup(InlineKeyboardMarkup.builder().keyboard(Collections.singleton(mealButtons)).build())
-                .build());
+
     }
 
     @SneakyThrows
@@ -142,12 +174,31 @@ public class TestBot extends TelegramLongPollingBot {
                                 .build());
                         break;
                     case "/get_history":
+                        break;
                     case "/clear_history":
+                        commandFlag = "/clear_history";
+                        List<InlineKeyboardButton> requestButtons = new ArrayList<>();
+                        Request targetRequest = mealModeService.getTargetRequest(message.getChatId());
+                        requestButtons.add(InlineKeyboardButton.builder()
+                                .text(getCurrencyButton(targetRequest, Request.YES))
+                                .callbackData("REQUEST:" + Request.YES)
+                                .build());
+                        requestButtons.add(InlineKeyboardButton.builder()
+                                .text(getCurrencyButton(targetRequest, Request.NO))
+                                .callbackData("REQUEST:" + Request.NO)
+                                .build());
+                        execute(SendMessage.builder()
+                                .text("Do you confirm your action? ✅❌")
+                                .chatId(message.getChatId().toString())
+                                .replyMarkup(InlineKeyboardMarkup.builder().keyboard(List.of(requestButtons)).build())
+                                .build());
+                        return;
+
 //                    case "/donate":
                     case "/calculate_meal_intake":
+                        commandFlag = "/calculate_meal_intake";
                         List<InlineKeyboardButton> mealButtons = new ArrayList<>();
                         MealIntake targetMeal = mealModeService.getTargetMeal(message.getChatId());
-                        System.out.println(message.getChatId());
                         for (MealIntake meal : MealIntake.values()) {
                             mealButtons.add(
                                     InlineKeyboardButton.builder()
@@ -162,16 +213,17 @@ public class TestBot extends TelegramLongPollingBot {
                                 .replyMarkup(InlineKeyboardMarkup.builder().keyboard(List.of(mealButtons)).build())
                                 .build());
                         execute(SendMessage.builder()
-                                .text()
+                                .text(Prints.addCalorieMessage)
                                 .chatId(message.getChatId().toString())
                                 .build());
-                        createMeal(message, mealModeService.getTargetMeal(message.getChatId()));
                         return;
                     case "/for_developers":
+                        commandFlag = "/for_developers";
                         execute(SendMessage.builder()
-                                .text(userService.createCheck(message))
+                                .text("Тут вы можете оставить свои пожелания разработчику")
                                 .chatId(message.getChatId().toString())
                                 .build());
+                        return;
                     default:
                         execute(SendMessage.builder()
                                 .text("Command not found ⚠")
@@ -181,14 +233,60 @@ public class TestBot extends TelegramLongPollingBot {
 
             }
         }
+        if (commandFlag != null && commandFlag.equals("/calculate_meal_intake")) {
+            createMeal(message, mealModeService.getTargetMeal(message.getChatId()));
+            commandFlag = null;
+        }
+        if (commandFlag != null && commandFlag.equals("/for_developers")) {
+            messageForDevelopers(message);
+            commandFlag = null;
+        }
+//        if (commandFlag != null && commandFlag.equals("/clear_history")) {
+//            System.out.println("____________");
+//            System.out.println(mealModeService.getTargetRequest(message.getChatId()));
+//            if (mealModeService.getTargetRequest(message.getChatId()).equals(Request.YES))
+//                clearInfo(message);
+//            else {
+//                execute(SendMessage.builder()
+//                        .text("Удаление отменено")
+//                        .chatId(message.getChatId().toString())
+//                        .build());
+//            }
+//            commandFlag = null;
+//        }
 
     }
 
+    @SneakyThrows
     private void createMeal(Message message, MealIntake meal) {
         if (message.hasText()) {
-            String messageText = message.getText();
-            MealIntake targetMeal = mealModeService.getTargetMeal(message.getChatId());
             String answer = mealService.create(message, meal);
+            execute(SendMessage.builder()
+                    .text(answer)
+                    .chatId(message.getChatId().toString())
+                    .build());
+        }
+    }
+
+    @SneakyThrows
+    private void messageForDevelopers(Message message) {
+        if (message.hasText()) {
+            String answer = complaintService.create(message);
+            execute(SendMessage.builder()
+                    .text(answer)
+                    .chatId(message.getChatId().toString())
+                    .build());
+        }
+    }
+
+    @SneakyThrows
+    private void clearInfo(Message message) {
+        if (message.hasText()) {
+            mealService.deleteAllByUserId(message);
+            execute(SendMessage.builder()
+                    .text("Данные успешно удалены \uD83D\uDDD1")
+                    .chatId(message.getChatId().toString())
+                    .build());
         }
     }
 
@@ -196,4 +294,7 @@ public class TestBot extends TelegramLongPollingBot {
         return saved == meal ? meal + " ✅" : meal.name();
     }
 
+    private String getCurrencyButton(Request saved, Request request) {
+        return saved == request ? request + " ✅" : request.name();
+    }
 }
